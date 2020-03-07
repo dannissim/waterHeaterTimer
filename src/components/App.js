@@ -1,126 +1,134 @@
 import React, { Component } from 'react';
+import io from 'socket.io-client'
 import Settings from './Settings';
 import Times from './Times';
 import Controller from './Controller';
 import './App.css';
+import moment from 'moment'
+
+const socket = io()
+const SERVER_URL = 'http://localhost:5000'
 
 export default class App extends Component {
   constructor(props) {
     super(props);
-
-    this.audioBeep = React.createRef();
-
     this.state = {
-      breakLength: Number.parseInt(this.props.defaultBreakLength, 10),
-      sessionLength: Number.parseInt(this.props.defaultSessionLength, 10),
-      timeLabel: 'Session',
-      timeLeftInSecond: Number.parseInt(this.props.defaultSessionLength, 10) * 60,
-      isStart: false,
-      timerInterval: null
+      timeToHeat: 60,
+      timeLeftInSecond: 3600,
+      isOn: false,
+      timerInterval: null,
+      lastTimeOn: null, // should be moment type obj
+      lastTimeOnFor: 0 // num of minutes heater was on last time
     }
 
-    this.onIncreaseBreak = this.onIncreaseBreak.bind(this);
-    this.onDecreaseBreak = this.onDecreaseBreak.bind(this);
     this.onIncreaseSession = this.onIncreaseSession.bind(this);
     this.onDecreaseSession = this.onDecreaseSession.bind(this);
     this.onReset = this.onReset.bind(this);
     this.onStartStop = this.onStartStop.bind(this);
     this.decreaseTimer = this.decreaseTimer.bind(this);
     this.phaseControl = this.phaseControl.bind(this);
+    this.updateTimeToHeat = this.updateTimeToHeat.bind(this)
   }
 
-  onIncreaseBreak() {
-    if (this.state.breakLength < 60 && !this.state.isStart) {
-      this.setState({
-        breakLength: this.state.breakLength + 1
-      });
-    }
+  componentDidMount() {
+    socket.on('newStatus', status => {
+      console.log(status);
+      var newTimerInterval
+      // now we need to differentiate between stop and reset
+      // if stop, then we need to keep the timeLeft state
+      // if reset, then we need to reset the timeLeft state
+      if (!status.isOn && !!this.state.timerInterval) {
+        newTimerInterval = null
+        clearInterval(this.state.timerInterval)
+      }
+      if (status.isOn && !this.state.timerInterval) {
+        console.log('turned on timer')
+        newTimerInterval = setInterval(() => {
+          this.decreaseTimer();
+          this.phaseControl();
+        }, 1000)
+      }
+      var newState = {}
+      if (status.isOn)
+        newState = { isOn: status.isOn, timeToHeat: status.timeToHeat, timeLeftInSecond: status.timeLeft }
+      else if (status.stop)
+        newState = { isOn: false, lastTimeOn: status.lastTimeOn, lastTimeOnFor: status.lastTimeOnFor }
+      else if (status.reset)
+        newState = { isOn: false, timeLeftInSecond: (this.state.timeToHeat * 60), lastTimeOn: status.lastTimeOn,
+          lastTimeOnFor: status.lastTimeOnFor }
+      if (newTimerInterval !== undefined)
+        newState.timerInterval = newTimerInterval
+      this.setState(newState)
+    })
+
+    // this only runs when app first starts to run
+    fetch(SERVER_URL + '/api/status').then(res => res.json()).then(res => {
+      var newState = {
+        isOn: res.isOn, timeLeftInSecond: res.timeLeft, timeToHeat: res.timeToHeat, lastTimeOn: res.lastTimeOn,
+        lastTimeOnFor: res.lastTimeOnFor,
+        timerInterval: res.isOn ? setInterval(() => {
+          this.decreaseTimer();
+          this.phaseControl();
+        }, 1000)
+          : null
+      }
+      var localTimeToHeat = localStorage.getItem('timeToHeat')
+      if (!res.isOn && !!localTimeToHeat){
+        newState.timeToHeat = localTimeToHeat
+        newState.timeLeftInSecond = localTimeToHeat * 60
+      }
+      this.setState(newState)
+    })
   }
 
-  onDecreaseBreak() {
-    if (this.state.breakLength > 1 && !this.state.isStart) {
-      this.setState({
-        breakLength: this.state.breakLength - 1
-      });
-    }
-  }
 
   onIncreaseSession() {
-    if (this.state.sessionLength < 60 && !this.state.isStart) {
-      this.setState({
-        sessionLength: this.state.sessionLength + 1,
-        timeLeftInSecond: (this.state.sessionLength + 1) * 60
-      });
+    if (!this.state.isOn) {
+      localStorage.setItem('timeToHeat', this.state.timeToHeat + 1)
+      this.setState(prevState => ({
+        timeToHeat: prevState.timeToHeat + 1,
+        timeLeftInSecond: (prevState.timeToHeat + 1) * 60
+      }))
     }
   }
 
   onDecreaseSession() {
-    if (this.state.sessionLength > 1 && !this.state.isStart) {
-      this.setState({
-        sessionLength: this.state.sessionLength - 1,
-        timeLeftInSecond: (this.state.sessionLength - 1) * 60
-      });
+    if (this.state.timeToHeat > 1 && !this.state.isOn) {
+      localStorage.setItem('timeToHeat', this.state.timeToHeat - 1)
+      this.setState(prevState => ({
+        timeToHeat: prevState.timeToHeat - 1,
+        timeLeftInSecond: (prevState.timeToHeat - 1) * 60
+      }))
     }
   }
 
   onReset() {
-    this.setState({
-      breakLength: Number.parseInt(this.props.defaultBreakLength, 10),
-      sessionLength: Number.parseInt(this.props.defaultSessionLength, 10),
-      timeLabel: 'Session',
-      timeLeftInSecond: Number.parseInt(this.props.defaultSessionLength, 10) * 60,
-      isStart: false,
-      timerInterval: null
-    });
-
-    this.audioBeep.current.pause();
-    this.audioBeep.current.currentTime = 0;
-    this.state.timerInterval && clearInterval(this.state.timerInterval);
+    if (this.state.isOn)
+      fetch(SERVER_URL + '/api/stopTimer?reset=true')
+    this.setState(prevState => ({timeLeftInSecond: prevState.timeToHeat * 60}))
   }
 
   onStartStop() {
-    if (!this.state.isStart) {
-      this.setState({
-        isStart: !this.state.isStart,
-        timerInterval: setInterval(() => {
-          this.decreaseTimer();
-          this.phaseControl();
-        }, 1000)
-      })
-    } else {
-      this.audioBeep.current.pause();
-      this.audioBeep.current.currentTime = 0;
-      this.state.timerInterval && clearInterval(this.state.timerInterval);
-
-      this.setState({
-        isStart: !this.state.isStart,
-        timerInterval: null
-      });
-    }
+    if (!this.state.isOn)
+      fetch(SERVER_URL + '/api/startTimer?timeToHeat=' + this.state.timeToHeat + '&timeLeft=' + this.state.timeLeftInSecond)
+    else
+      fetch(SERVER_URL + '/api/stopTimer?stop=true')
   }
 
   decreaseTimer() {
-    this.setState({
-      timeLeftInSecond: this.state.timeLeftInSecond - 1
-    });
+    this.setState(prevState => ({timeLeftInSecond: prevState.timeLeftInSecond - 1}))
   }
 
   phaseControl() {
-    if (this.state.timeLeftInSecond === 0) {
-      this.audioBeep.current.play();
-    } else if (this.state.timeLeftInSecond === -1) {
-      if (this.state.timeLabel === 'Session') {
-        this.setState({
-          timeLabel: 'Break',
-          timeLeftInSecond: this.state.breakLength * 60
-        });
-      } else {
-        this.setState({
-          timeLabel: 'Session',
-          timeLeftInSecond: this.state.sessionLength * 60
-        });
-      }
-    }
+    if (this.state.timeLeftInSecond === -1)
+      fetch(SERVER_URL + '/api/stopTimer')
+  }
+
+  updateTimeToHeat(event) {
+    var newTime = event.target.value
+    localStorage.setItem('timeToHeat', newTime)
+    if (newTime > 0 && newTime < 100)
+      this.setState({ timeToHeat: parseInt(newTime), timeLeftInSecond: newTime * 60 })
   }
 
   render() {
@@ -131,28 +139,23 @@ export default class App extends Component {
         </div>
 
         <Settings
-          breakLength={this.state.breakLength}
-          sessionLength={this.state.sessionLength}
-          isStart={this.state.isStart}
-          onDecreaseBreak={this.onDecreaseBreak}
+          timeToHeat={this.state.timeToHeat}
+          updateTimeToHeat={this.updateTimeToHeat}
+          isOn={this.state.isOn}
           onDecreaseSession={this.onDecreaseSession}
-          onIncreaseBreak={this.onIncreaseBreak}
           onIncreaseSession={this.onIncreaseSession}
         />
 
         <Times
-          timeLabel={this.state.timeLabel}
           timeLeftInSecond={this.state.timeLeftInSecond}
         />
 
         <Controller
           onReset={this.onReset}
           onStartStop={this.onStartStop}
-          isStart={this.state.isStart}
+          isOn={this.state.isOn}
         />
-
-        <audio id="beep" preload="auto" src="https://goo.gl/65cBl1" ref={this.audioBeep}></audio>
-
+        {!!this.state.lastTimeOn && <h3 align='center'>Last time heater was on: {moment(this.state.lastTimeOn).fromNow()} for <u>{this.state.lastTimeOnFor}</u> minutes.</h3>}
       </div>
     );
   }
