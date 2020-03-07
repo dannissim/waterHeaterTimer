@@ -5,9 +5,10 @@ import Times from './Times';
 import Controller from './Controller';
 import './App.css';
 import moment from 'moment'
+import './Controller.css';
 
 const socket = io()
-const SERVER_URL = 'http://localhost:5000'
+const SERVER_URL = 'http://192.168.1.127:5000'
 
 export default class App extends Component {
   constructor(props) {
@@ -54,8 +55,10 @@ export default class App extends Component {
       else if (status.stop)
         newState = { isOn: false, lastTimeOn: status.lastTimeOn, lastTimeOnFor: status.lastTimeOnFor }
       else if (status.reset)
-        newState = { isOn: false, timeLeftInSecond: (this.state.timeToHeat * 60), lastTimeOn: status.lastTimeOn,
-          lastTimeOnFor: status.lastTimeOnFor }
+        newState = {
+          isOn: false, timeLeftInSecond: (this.state.timeToHeat * 60), lastTimeOn: status.lastTimeOn,
+          lastTimeOnFor: status.lastTimeOnFor
+        }
       if (newTimerInterval !== undefined)
         newState.timerInterval = newTimerInterval
       this.setState(newState)
@@ -73,7 +76,8 @@ export default class App extends Component {
           : null
       }
       var localTimeToHeat = localStorage.getItem('timeToHeat')
-      if (!res.isOn && !!localTimeToHeat){
+      if (!res.isOn && !!localTimeToHeat) {
+        localTimeToHeat = parseInt(localTimeToHeat)
         newState.timeToHeat = localTimeToHeat
         newState.timeLeftInSecond = localTimeToHeat * 60
       }
@@ -105,18 +109,18 @@ export default class App extends Component {
   onReset() {
     if (this.state.isOn)
       fetch(SERVER_URL + '/api/stopTimer?reset=true')
-    this.setState(prevState => ({timeLeftInSecond: prevState.timeToHeat * 60}))
+    this.setState(prevState => ({ timeLeftInSecond: prevState.timeToHeat * 60 }))
   }
 
   onStartStop() {
-    if (!this.state.isOn)
+    if (!this.state.isOn && this.state.timeToHeat > 0)
       fetch(SERVER_URL + '/api/startTimer?timeToHeat=' + this.state.timeToHeat + '&timeLeft=' + this.state.timeLeftInSecond)
     else
       fetch(SERVER_URL + '/api/stopTimer?stop=true')
   }
 
   decreaseTimer() {
-    this.setState(prevState => ({timeLeftInSecond: prevState.timeLeftInSecond - 1}))
+    this.setState(prevState => ({ timeLeftInSecond: prevState.timeLeftInSecond - 1 }))
   }
 
   phaseControl() {
@@ -125,10 +129,12 @@ export default class App extends Component {
   }
 
   updateTimeToHeat(event) {
-    var newTime = event.target.value
-    localStorage.setItem('timeToHeat', newTime)
-    if (newTime > 0 && newTime < 100)
-      this.setState({ timeToHeat: parseInt(newTime), timeLeftInSecond: newTime * 60 })
+    if (!this.state.isOn) {
+      var newTime = event.target.value
+      localStorage.setItem('timeToHeat', newTime)
+      if (newTime >= 0 && newTime < 100)
+        this.setState({ timeToHeat: parseInt(newTime), timeLeftInSecond: newTime * 60 })
+    }
   }
 
   render() {
@@ -150,12 +156,13 @@ export default class App extends Component {
           timeLeftInSecond={this.state.timeLeftInSecond}
         />
 
-        <Controller
+        <Controller className='controller'
           onReset={this.onReset}
           onStartStop={this.onStartStop}
           isOn={this.state.isOn}
         />
-        {!!this.state.lastTimeOn && <h3 align='center'>Last time heater was on: {moment(this.state.lastTimeOn).fromNow()} for <u>{this.state.lastTimeOnFor}</u> minutes.</h3>}
+
+        {!!this.state.lastTimeOn && <h3 align='center'>Last time heater was on: {moment(this.state.lastTimeOn).subtract(3, 'seconds').fromNow()} for <u>{this.state.lastTimeOnFor}</u> minutes.</h3>}
       </div>
     );
   }

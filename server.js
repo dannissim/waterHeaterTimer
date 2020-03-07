@@ -3,18 +3,15 @@ const path = require('path');
 const app = express();
 const { spawn } = require('child_process');
 const moment = require('moment')
+const cors = require('cors')
 
 // Static folder
 app.use(express.static(path.join(__dirname, 'build'), { index: false }));
+app.use(cors())
 
 const server = require('http').createServer(app)
 
 // 3rd party middleware
-
-app.use(require('express-basic-auth')({
-    users: { 'admin': '8888' },
-    challenge: true
-}))
 app.use(require('helmet')()) // security middleware
 app.use(require('compression')()) // zips outgoing requests- better performance 
 app.use(express.json())
