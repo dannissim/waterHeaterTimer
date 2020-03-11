@@ -5,6 +5,6 @@ Prerequisites:
 node installation
 
 Steps to run:  
-change SERVER_URL to server ip addr.  
+in /src/components/App.js: change SERVER_URL to server ip addr.  
 npm run build  
 node server
