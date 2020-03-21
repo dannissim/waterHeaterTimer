@@ -1,0 +1,13 @@
+[Unit]
+Description="Node.js Water Heater Http Server"
+After=network.target
+
+[Service]
+PIDFile=/tmp/water_heater.pid
+Environment=PORT=80
+Restart=on-failure
+KillSignal=SIGQUIT
+WorkingDirectory=/home/ubuntu/waterheater/waterHeaterTimer
+ExecStart=/usr/bin/node /home/ubuntu/waterheater/waterHeaterTimer/server.js
+[Install]
+WantedBy=multi-user.target
