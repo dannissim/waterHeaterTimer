@@ -8,7 +8,7 @@ import moment from 'moment'
 import './Controller.css';
 
 const socket = io()
-const SERVER_URL = 'http://192.168.1.127:5000'
+const SERVER_URL = 'http://192.168.1.100:80'
 
 export default class App extends Component {
   constructor(props) {
